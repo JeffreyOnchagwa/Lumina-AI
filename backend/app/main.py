@@ -1,6 +1,19 @@
 from fastapi import FastAPI
-app = FastAPI(title="Lumina AI Backend", version="1.0.0")
+
+from app.api.users import router as users_router
+from app.core.config import settings
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+)
+
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to Lumina AI Backend!"}
+    return {
+        "message": f"Welcome to {settings.APP_NAME} Backend!"
+    }
+
+
+app.include_router(users_router)
