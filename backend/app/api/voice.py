@@ -1,4 +1,13 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -160,4 +169,43 @@ async def voice_chat(
         response=response,
         conversation_id=conversation.id,
         audio_available=audio_available,
+    )
+
+
+@router.post("/speak")
+def speak_voice_response(
+    text: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    preferences = get_or_create_user_preferences(
+        db=db,
+        user_id=current_user.id,
+    )
+
+    voice_name = (
+        preferences.preferred_voice
+        or DEFAULT_VOICE
+    )
+
+    if voice_name == "default":
+        voice_name = DEFAULT_VOICE
+
+    try:
+        audio_bytes = generate_speech(
+            text=text,
+            voice_name=voice_name,
+            speech_speed=preferences.speech_speed,
+            language=preferences.preferred_language,
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Unable to generate voice audio at this time.",
+        ) from exc
+
+    return Response(
+        content=audio_bytes,
+        media_type="audio/wav",
     )
