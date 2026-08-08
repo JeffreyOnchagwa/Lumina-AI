@@ -28,3 +28,10 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    preferences = relationship(
+        "UserPreferences",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )

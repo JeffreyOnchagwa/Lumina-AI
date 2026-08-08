@@ -7,6 +7,7 @@ from app.database.database import Base
 from app.models.user import User
 from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
+from app.models.user_preferences import UserPreferences
 
 from alembic import context
 
