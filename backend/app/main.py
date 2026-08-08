@@ -6,6 +6,7 @@ from app.api.conversations import router as conversations_router
 from app.api.preferences import router as preferences_router
 from app.api.tts import router as tts_router
 from app.api.ocr import router as ocr_router
+from app.api.documents import router as documents_router
 from app.core.config import settings
 
 
@@ -28,3 +29,4 @@ app.include_router(conversations_router)
 app.include_router(preferences_router)
 app.include_router(tts_router)
 app.include_router(ocr_router)
+app.include_router(documents_router)
