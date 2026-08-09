@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.constants import MessageRole
+from app.core.limits import MAX_CONVERSATION_HISTORY_MESSAGES
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -62,6 +63,10 @@ def chat(
         conversation_id=conversation.id,
     )
 
+    history_messages = history_messages[
+        -MAX_CONVERSATION_HISTORY_MESSAGES:
+    ]
+
     conversation_history = [
         {
             "role": message.role,
@@ -71,10 +76,11 @@ def chat(
     ]
 
     memories = get_relevant_memories(
-    db=db,
-    user_id=current_user.id,
-    query=request.message,
-)
+        db=db,
+        user_id=current_user.id,
+        query=request.message,
+    )
+
     memory_context = build_memory_context(memories)
 
     if memory_context:
@@ -135,6 +141,8 @@ def chat(
             )
 
     except Exception:
+        # Memory extraction should never cause the main
+        # chat request to fail.
         pass
 
     return ChatResponse(

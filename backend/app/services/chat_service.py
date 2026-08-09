@@ -6,6 +6,6 @@ def generate_chat_response(
     conversation_history: list[dict[str, str]] | None = None,
 ) -> str:
     return generate_response(
-        message=message,
+        prompt=message,
         conversation_history=conversation_history,
     )

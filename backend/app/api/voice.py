@@ -12,6 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
 from app.core.constants import MessageRole
+from app.core.limits import (
+    MAX_AUDIO_UPLOAD_BYTES,
+    MAX_CONVERSATION_HISTORY_MESSAGES,
+)
 from app.database.dependencies import get_db
 from app.models.user import User
 from app.schemas.voice import VoiceConversationResponse
@@ -66,7 +70,9 @@ async def voice_chat(
             detail="Unsupported audio format.",
         )
 
-    audio_bytes = await file.read()
+    audio_bytes = await file.read(
+        MAX_AUDIO_UPLOAD_BYTES + 1
+    )
 
     if not audio_bytes:
         raise HTTPException(
@@ -74,11 +80,18 @@ async def voice_chat(
             detail="Uploaded audio file is empty.",
         )
 
+    if len(audio_bytes) > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Audio file is too large. Maximum size is 25 MB.",
+        )
+
     try:
         transcript = transcribe_audio(
             audio_bytes=audio_bytes,
             mime_type=file.content_type,
         )
+
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -91,6 +104,7 @@ async def voice_chat(
             user_id=current_user.id,
             title=generate_conversation_title(transcript),
         )
+
     else:
         conversation = get_user_conversation(
             db=db,
@@ -108,6 +122,10 @@ async def voice_chat(
         db=db,
         conversation_id=conversation.id,
     )
+
+    history_messages = history_messages[
+        -MAX_CONVERSATION_HISTORY_MESSAGES:
+    ]
 
     conversation_history = [
         {

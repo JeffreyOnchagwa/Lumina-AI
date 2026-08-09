@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 from app.api.dependencies import get_current_user
+from app.core.limits import MAX_AUDIO_UPLOAD_BYTES
 from app.models.user import User
 from app.stt.gemini_stt_service import transcribe_audio
 
@@ -34,12 +35,20 @@ async def transcribe(
             detail="Unsupported audio format.",
         )
 
-    audio_bytes = await file.read()
+    audio_bytes = await file.read(
+        MAX_AUDIO_UPLOAD_BYTES + 1
+    )
 
     if not audio_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded audio file is empty.",
+        )
+
+    if len(audio_bytes) > MAX_AUDIO_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Audio file is too large. Maximum size is 25 MB.",
         )
 
     try:
