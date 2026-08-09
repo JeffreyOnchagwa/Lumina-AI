@@ -9,6 +9,7 @@ from app.models.conversation import Conversation
 from app.models.conversation_message import ConversationMessage
 from app.models.user_preferences import UserPreferences
 from app.models.document import Document
+from app.models.user_memory import UserMemory
 
 from alembic import context
 

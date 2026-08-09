@@ -11,9 +11,17 @@ from app.services.conversation_service import (
     create_conversation,
     get_user_conversation,
 )
+from app.services.memory_extraction_service import (
+    extract_memory_from_message,
+)
 from app.services.message_service import (
     create_message,
     get_conversation_messages,
+)
+from app.services.user_memory_service import (
+    build_memory_context,
+    create_memory_if_new,
+    get_user_memories,
 )
 from app.utils.conversation_title import generate_conversation_title
 
@@ -62,6 +70,38 @@ def chat(
         for message in history_messages
     ]
 
+    memories = get_user_memories(
+        db=db,
+        user_id=current_user.id,
+    )
+
+    memory_context = build_memory_context(memories)
+
+    if memory_context:
+        conversation_history.insert(
+            0,
+            {
+                "role": "user",
+                "content": (
+                    "Use the following long-term user information "
+                    "when it is relevant to the current request. "
+                    "Do not mention that this information came from memory "
+                    "unless the user asks.\n\n"
+                    f"{memory_context}"
+                ),
+            },
+        )
+
+        conversation_history.insert(
+            1,
+            {
+                "role": "model",
+                "content": (
+                    "Understood. I will use that information only when relevant."
+                ),
+            },
+        )
+
     create_message(
         db=db,
         conversation_id=conversation.id,
@@ -80,6 +120,22 @@ def chat(
         role=MessageRole.MODEL,
         content=response,
     )
+
+    try:
+        extracted_memory = extract_memory_from_message(
+            request.message
+        )
+
+        if extracted_memory is not None:
+            create_memory_if_new(
+                db=db,
+                user_id=current_user.id,
+                category=extracted_memory["category"],
+                content=extracted_memory["content"],
+            )
+
+    except Exception:
+        pass
 
     return ChatResponse(
         response=response,
