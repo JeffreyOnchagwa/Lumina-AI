@@ -21,7 +21,7 @@ from app.services.message_service import (
 from app.services.user_memory_service import (
     build_memory_context,
     create_memory_if_new,
-    get_user_memories,
+    get_relevant_memories,
 )
 from app.utils.conversation_title import generate_conversation_title
 
@@ -70,11 +70,11 @@ def chat(
         for message in history_messages
     ]
 
-    memories = get_user_memories(
-        db=db,
-        user_id=current_user.id,
-    )
-
+    memories = get_relevant_memories(
+    db=db,
+    user_id=current_user.id,
+    query=request.message,
+)
     memory_context = build_memory_context(memories)
 
     if memory_context:

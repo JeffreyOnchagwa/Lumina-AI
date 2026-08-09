@@ -35,6 +35,65 @@ def get_user_memories(
 
     return list(db.scalars(statement).all())
 
+def get_relevant_memories(
+    db: Session,
+    user_id: int,
+    query: str,
+    limit: int = 10,
+) -> list[UserMemory]:
+    memories = get_user_memories(
+        db=db,
+        user_id=user_id,
+    )
+
+    if not memories:
+        return []
+
+    query_words = {
+        word.strip(".,!?;:()[]{}\"'").lower()
+        for word in query.split()
+        if len(word.strip(".,!?;:()[]{}\"'")) >= 3
+    }
+
+    scored_memories = []
+
+    for memory in memories:
+        memory_text = (
+            f"{memory.category} {memory.content}"
+        ).lower()
+
+        score = sum(
+            1
+            for word in query_words
+            if word in memory_text
+        )
+
+        scored_memories.append(
+            (score, memory)
+        )
+
+    scored_memories.sort(
+        key=lambda item: (
+            item[0],
+            item[1].updated_at,
+        ),
+        reverse=True,
+    )
+
+    relevant = [
+        memory
+        for score, memory in scored_memories
+        if score > 0
+    ]
+
+    # If keyword matching finds nothing, return only a few
+    # recent memories instead of injecting the user's entire
+    # memory history.
+    if not relevant:
+        return memories[:3]
+
+    return relevant[:limit]
+
 
 def find_duplicate_memory(
     db: Session,
