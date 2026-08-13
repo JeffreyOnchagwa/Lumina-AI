@@ -1,4 +1,4 @@
-from app.ai.gemini_service import generate_response
+from app.ai.groq_service import generate_response
 
 
 def generate_chat_response(
@@ -6,6 +6,6 @@ def generate_chat_response(
     conversation_history: list[dict[str, str]] | None = None,
 ) -> str:
     return generate_response(
-        prompt=message,
+        message=message,
         conversation_history=conversation_history,
     )

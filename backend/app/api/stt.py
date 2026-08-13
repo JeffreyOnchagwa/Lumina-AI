@@ -1,9 +1,16 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 
 from app.api.dependencies import get_current_user
 from app.core.limits import MAX_AUDIO_UPLOAD_BYTES
 from app.models.user import User
-from app.stt.gemini_stt_service import transcribe_audio
+from app.stt.whisper_stt_service import transcribe_audio
 
 
 router = APIRouter(
@@ -56,7 +63,13 @@ async def transcribe(
             audio_bytes=audio_bytes,
             mime_type=file.content_type,
         )
+
     except Exception as exc:
+        print(
+            "STT ERROR:",
+            repr(exc),
+        )
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to transcribe audio at this time.",

@@ -1,14 +1,14 @@
-from app.ai.gemini_service import generate_response
+from app.ai.groq_service import generate_response
 
 
-def test_gemini():
+def test_groq():
     response = generate_response(
         "Say exactly: Lumina AI connection successful."
     )
 
-    print("Gemini response:")
+    print("Groq response:")
     print(response)
 
 
 if __name__ == "__main__":
-    test_gemini()
+    test_groq()

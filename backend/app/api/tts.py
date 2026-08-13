@@ -8,7 +8,7 @@ from app.schemas.tts import TTSRequest
 from app.services.user_preferences_service import (
     get_or_create_user_preferences,
 )
-from app.tts.gemini_tts_service import DEFAULT_VOICE, generate_speech
+from app.tts.groq_tts_service import DEFAULT_VOICE, generate_speech
 
 
 router = APIRouter(
@@ -44,7 +44,13 @@ def generate_tts(
             speech_speed=preferences.speech_speed,
             language=preferences.preferred_language,
         )
+
     except Exception as exc:
+        print(
+            "TTS ERROR:",
+            repr(exc),
+        )
+
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Unable to generate speech at this time.",

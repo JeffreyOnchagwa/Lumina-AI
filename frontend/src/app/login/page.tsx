@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import { API_URL } from "@/lib/api";
 import {
   ArrowRight,
   BrainCircuit,
@@ -32,7 +33,7 @@ export default function LoginPage() {
 
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/users/login",
+        `${API_URL}/users/login`,
         {
           method: "POST",
           headers: {

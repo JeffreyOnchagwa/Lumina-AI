@@ -1,11 +1,22 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
-from app.core.limits import MAX_PDF_UPLOAD_BYTES
+from app.core.limits import (
+    MAX_IMAGE_UPLOAD_BYTES,
+    MAX_PDF_UPLOAD_BYTES,
+)
 from app.database.dependencies import get_db
 from app.documents.pdf_service import extract_text_from_pdf
 from app.models.user import User
+from app.ocr.groq_vision_service import extract_text_from_image
 from app.schemas.document import (
     DocumentDetailResponse,
     DocumentResponse,
@@ -34,6 +45,13 @@ router = APIRouter(
 )
 
 
+ALLOWED_DOCUMENT_TYPES = {
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+}
+
+
 @router.post(
     "/upload",
     response_model=DocumentDetailResponse,
@@ -44,48 +62,131 @@ async def upload_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if file.content_type != "application/pdf":
+    content_type = (
+        file.content_type
+        or ""
+    ).lower()
+
+    if content_type not in ALLOWED_DOCUMENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported.",
+            detail=(
+                "Only PDF, PNG, JPG, and JPEG files "
+                "are supported."
+            ),
         )
 
-    pdf_bytes = await file.read(
-        MAX_PDF_UPLOAD_BYTES + 1
-    )
+    # -------------------------------------------------
+    # PDF UPLOAD
+    # -------------------------------------------------
 
-    if not pdf_bytes:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded PDF is empty.",
+    if content_type == "application/pdf":
+        file_bytes = await file.read(
+            MAX_PDF_UPLOAD_BYTES + 1
         )
 
-    if len(pdf_bytes) > MAX_PDF_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail="PDF file is too large. Maximum size is 150 MB.",
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded PDF is empty.",
+            )
+
+        if len(file_bytes) > MAX_PDF_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=(
+                    "PDF file is too large. "
+                    "Maximum size is 150 MB."
+                ),
+            )
+
+        try:
+            extracted_text = extract_text_from_pdf(
+                file_bytes
+            )
+
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+        except Exception as exc:
+            print(
+                "PDF PROCESSING ERROR:",
+                repr(exc),
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Unable to process the PDF "
+                    "at this time."
+                ),
+            ) from exc
+
+    # -------------------------------------------------
+    # IMAGE UPLOAD
+    # -------------------------------------------------
+
+    else:
+        file_bytes = await file.read(
+            MAX_IMAGE_UPLOAD_BYTES + 1
         )
 
-    try:
-        extracted_text = extract_text_from_pdf(pdf_bytes)
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded image is empty.",
+            )
 
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc
+        if len(file_bytes) > MAX_IMAGE_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=(
+                    "Image file is too large. "
+                    "Maximum size is 10 MB."
+                ),
+            )
 
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to process the PDF at this time.",
-        ) from exc
+        try:
+            extracted_text = extract_text_from_image(
+                image_bytes=file_bytes,
+                mime_type=content_type,
+            )
+
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            ) from exc
+
+        except Exception as exc:
+            print(
+                "IMAGE OCR ERROR:",
+                repr(exc),
+            )
+
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=(
+                    "Unable to extract text from "
+                    "the image at this time."
+                ),
+            ) from exc
+
+    # -------------------------------------------------
+    # SAVE DOCUMENT
+    # -------------------------------------------------
 
     document = create_document(
         db=db,
         user_id=current_user.id,
-        filename=file.filename or "document.pdf",
-        mime_type=file.content_type,
+        filename=(
+            file.filename
+            or "document"
+        ),
+        mime_type=content_type,
         extracted_text=extracted_text,
     )
 
@@ -159,7 +260,10 @@ def summarize_saved_document(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to summarize the document at this time.",
+            detail=(
+                "Unable to summarize the "
+                "document at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(
@@ -196,7 +300,10 @@ def simplify_saved_document(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to simplify the document at this time.",
+            detail=(
+                "Unable to simplify the "
+                "document at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(
@@ -235,7 +342,10 @@ def ask_saved_document(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to answer the document question at this time.",
+            detail=(
+                "Unable to answer the document "
+                "question at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(
@@ -259,7 +369,10 @@ def summarize_document_text(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to summarize the document at this time.",
+            detail=(
+                "Unable to summarize the "
+                "document at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(
@@ -283,7 +396,10 @@ def simplify_document_text(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to simplify the document at this time.",
+            detail=(
+                "Unable to simplify the "
+                "document at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(
@@ -308,7 +424,10 @@ def ask_document_question(
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Unable to answer the document question at this time.",
+            detail=(
+                "Unable to answer the document "
+                "question at this time."
+            ),
         ) from exc
 
     return DocumentAIResponse(

@@ -1,38 +1,78 @@
-from app.ai.gemini_service import generate_response
+from app.ai.groq_service import generate_response
 
 
-def summarize_document(document_text: str) -> str:
+MAX_DOCUMENT_CHARS = 12000
+
+
+def prepare_document_text(
+    document_text: str,
+) -> str:
+    text = document_text.strip()
+
+    if len(text) <= MAX_DOCUMENT_CHARS:
+        return text
+
+    return text[:MAX_DOCUMENT_CHARS]
+
+
+def summarize_document(
+    document_text: str,
+) -> str:
+    prepared_text = prepare_document_text(
+        document_text
+    )
+
     prompt = (
-        "Summarize the following document clearly and accurately. "
-        "Preserve the most important ideas, facts, and conclusions. "
+        "Summarize this document clearly and concisely. "
+        "Include the main ideas and important facts. "
         "Do not invent information.\n\n"
-        f"{document_text}"
+        "DOCUMENT:\n"
+        f"{prepared_text}"
     )
 
-    return generate_response(prompt)
+    return generate_response(
+        message=prompt
+    )
 
 
-def simplify_document(document_text: str) -> str:
+def simplify_document(
+    document_text: str,
+) -> str:
+    prepared_text = prepare_document_text(
+        document_text
+    )
+
     prompt = (
-        "Rewrite the following document in simpler language while preserving "
-        "its meaning. Use short, clear sentences and explain difficult terms "
-        "when necessary. Do not remove important information.\n\n"
-        f"{document_text}"
+        "Rewrite this document in simple, clear language. "
+        "Keep the important information and explain difficult ideas "
+        "simply. Do not invent information.\n\n"
+        "DOCUMENT:\n"
+        f"{prepared_text}"
     )
 
-    return generate_response(prompt)
+    return generate_response(
+        message=prompt
+    )
 
 
 def answer_document_question(
     document_text: str,
     question: str,
 ) -> str:
-    prompt = (
-        "Answer the user's question using only the document provided below. "
-        "If the answer is not supported by the document, say that the document "
-        "does not contain enough information. Do not invent facts.\n\n"
-        f"DOCUMENT:\n{document_text}\n\n"
-        f"QUESTION:\n{question}"
+    prepared_text = prepare_document_text(
+        document_text
     )
 
-    return generate_response(prompt)
+    prompt = (
+        "Answer the question using only the document below. "
+        "If the document does not contain the answer, say so. "
+        "Be concise and do not invent information.\n\n"
+        "DOCUMENT:\n"
+        f"{prepared_text}\n\n"
+        "QUESTION:\n"
+        f"{question}"
+    )
+
+    return generate_response(
+        message=prompt
+    )

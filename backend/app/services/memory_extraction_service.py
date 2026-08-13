@@ -1,21 +1,22 @@
 import json
 
-from google import genai
-from google.genai import types
+from groq import Groq
 
 from app.core.config import settings
-
-
-client = genai.Client(
-    api_key=settings.GEMINI_API_KEY,
-)
-
-MEMORY_MODEL = "gemini-3.5-flash"
 
 
 def extract_memory_from_message(
     message: str,
 ) -> dict | None:
+    if not settings.GROQ_API_KEY:
+        return None
+
+    client = Groq(
+        api_key=settings.GROQ_API_KEY,
+        timeout=15.0,
+        max_retries=0,
+    )
+
     prompt = f"""
 Analyze the user's message and determine whether it contains useful
 long-term information that would improve future conversations.
@@ -45,38 +46,57 @@ Do NOT store:
 User message:
 {message}
 
-If there is useful long-term information, return JSON exactly like:
-
-{{
-    "should_store": true,
-    "category": "preference",
-    "content": "User prefers concise explanations."
-}}
-
-If nothing should be stored, return:
-
-{{
-    "should_store": false,
-    "category": null,
-    "content": null
-}}
-
 Return JSON only.
+
+If memory should be stored:
+
+{{
+  "should_store": true,
+  "category": "preference",
+  "content": "User prefers concise explanations."
+}}
+
+If nothing should be stored:
+
+{{
+  "should_store": false,
+  "category": null,
+  "content": null
+}}
 """
 
-    response = client.models.generate_content(
-        model=MEMORY_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        ),
-    )
+    try:
+        response = client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            reasoning_effort="low",
+            include_reasoning=False,
+            response_format={
+                "type": "json_object"
+            },
+            max_completion_tokens=300,
+            stream=False,
+        )
 
-    if not response.text:
+    except Exception:
+        # Memory extraction should never crash normal chat.
+        return None
+
+    if not response.choices:
+        return None
+
+    content = response.choices[0].message.content
+
+    if not content:
         return None
 
     try:
-        data = json.loads(response.text)
+        data = json.loads(content)
     except json.JSONDecodeError:
         return None
 
@@ -84,12 +104,12 @@ Return JSON only.
         return None
 
     category = data.get("category")
-    content = data.get("content")
+    memory_content = data.get("content")
 
-    if not category or not content:
+    if not category or not memory_content:
         return None
 
     return {
         "category": str(category)[:100],
-        "content": str(content)[:2000],
+        "content": str(memory_content)[:2000],
     }

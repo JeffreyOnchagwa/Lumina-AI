@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.tts.gemini_tts_service import generate_speech
+from app.tts.groq_tts_service import generate_speech
 
 
 def test_wav_output():

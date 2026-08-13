@@ -1,6 +1,6 @@
 import pymupdf
 
-from app.ocr.gemini_vision_service import extract_text_from_image
+from app.ocr.groq_vision_service import extract_text_from_image
 
 
 MIN_TEXT_LENGTH = 20

@@ -12,16 +12,12 @@ from app.services.conversation_service import (
     create_conversation,
     get_user_conversation,
 )
-from app.services.memory_extraction_service import (
-    extract_memory_from_message,
-)
 from app.services.message_service import (
     create_message,
     get_conversation_messages,
 )
 from app.services.user_memory_service import (
     build_memory_context,
-    create_memory_if_new,
     get_relevant_memories,
 )
 from app.utils.conversation_title import generate_conversation_title
@@ -33,18 +29,28 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=ChatResponse)
+@router.post(
+    "/",
+    response_model=ChatResponse,
+)
 def chat(
     request: ChatRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # -------------------------------------------------
+    # GET OR CREATE CONVERSATION
+    # -------------------------------------------------
+
     if request.conversation_id is None:
         conversation = create_conversation(
             db=db,
             user_id=current_user.id,
-            title=generate_conversation_title(request.message),
+            title=generate_conversation_title(
+                request.message
+            ),
         )
+
     else:
         conversation = get_user_conversation(
             db=db,
@@ -57,6 +63,10 @@ def chat(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found.",
             )
+
+    # -------------------------------------------------
+    # LOAD CONVERSATION HISTORY
+    # -------------------------------------------------
 
     history_messages = get_conversation_messages(
         db=db,
@@ -75,13 +85,19 @@ def chat(
         for message in history_messages
     ]
 
+    # -------------------------------------------------
+    # LOAD EXISTING LONG-TERM MEMORIES
+    # -------------------------------------------------
+
     memories = get_relevant_memories(
         db=db,
         user_id=current_user.id,
         query=request.message,
     )
 
-    memory_context = build_memory_context(memories)
+    memory_context = build_memory_context(
+        memories
+    )
 
     if memory_context:
         conversation_history.insert(
@@ -91,8 +107,8 @@ def chat(
                 "content": (
                     "Use the following long-term user information "
                     "when it is relevant to the current request. "
-                    "Do not mention that this information came from memory "
-                    "unless the user asks.\n\n"
+                    "Do not mention that this information came from "
+                    "memory unless the user asks.\n\n"
                     f"{memory_context}"
                 ),
             },
@@ -103,10 +119,15 @@ def chat(
             {
                 "role": "model",
                 "content": (
-                    "Understood. I will use that information only when relevant."
+                    "Understood. I will use that information "
+                    "only when relevant."
                 ),
             },
         )
+
+    # -------------------------------------------------
+    # SAVE USER MESSAGE
+    # -------------------------------------------------
 
     create_message(
         db=db,
@@ -115,10 +136,18 @@ def chat(
         content=request.message,
     )
 
+    # -------------------------------------------------
+    # GENERATE GROQ RESPONSE
+    # -------------------------------------------------
+
     response = generate_chat_response(
         message=request.message,
         conversation_history=conversation_history,
     )
+
+    # -------------------------------------------------
+    # SAVE ASSISTANT RESPONSE
+    # -------------------------------------------------
 
     create_message(
         db=db,
@@ -127,23 +156,15 @@ def chat(
         content=response,
     )
 
-    try:
-        extracted_memory = extract_memory_from_message(
-            request.message
-        )
-
-        if extracted_memory is not None:
-            create_memory_if_new(
-                db=db,
-                user_id=current_user.id,
-                category=extracted_memory["category"],
-                content=extracted_memory["content"],
-            )
-
-    except Exception:
-        # Memory extraction should never cause the main
-        # chat request to fail.
-        pass
+    # -------------------------------------------------
+    # RETURN RESPONSE IMMEDIATELY
+    #
+    # Automatic memory extraction is temporarily
+    # disabled here because it caused a second AI call
+    # before the user received the response.
+    #
+    # We will restore it as a background task later.
+    # -------------------------------------------------
 
     return ChatResponse(
         response=response,

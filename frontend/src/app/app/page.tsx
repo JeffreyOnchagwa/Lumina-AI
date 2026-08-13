@@ -6,22 +6,30 @@ import {
   useRef,
   useState,
 } from "react";
+
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
+import MobileNav from "@/components/mobile-nav";
 
 import {
   BrainCircuit,
   FileText,
+  History,
   LogOut,
   MessageSquare,
   Mic,
+  MoreHorizontal,
   Pause,
+  Pencil,
   Play,
   RotateCcw,
   Send,
   Settings,
   Sparkles,
   Square,
+  StopCircle,
+  Trash2,
+  UserRound,
   Volume2,
   Waves,
 } from "lucide-react";
@@ -47,22 +55,57 @@ type VoiceResponse = {
 };
 
 
+type Conversation = {
+  id: number;
+  user_id: number;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+
+type BackendMessage = {
+  id: number;
+  conversation_id: number;
+  role: string;
+  content: string;
+  created_at: string;
+};
+
+
+type UserPreferences = {
+  id: number;
+  user_id: number;
+  preferred_voice: string;
+  speech_speed: number;
+  font_size: number;
+  dyslexia_mode: boolean;
+  high_contrast_mode: boolean;
+  preferred_language: string;
+};
+
+
 export default function AppPage() {
   const router = useRouter();
 
   const mediaRecorderRef =
     useRef<MediaRecorder | null>(null);
 
+  const activeStreamRef =
+    useRef<MediaStream | null>(null);
+
   const audioChunksRef =
     useRef<Blob[]>([]);
 
-  const audioRef =
-    useRef<HTMLAudioElement | null>(null);
+  const lastSpokenTextRef =
+    useRef("");
 
-  const audioUrlRef =
-    useRef<string | null>(null);
+  const chatScrollRef =
+    useRef<HTMLDivElement | null>(null);
 
-  const [ready, setReady] = useState(false);
+
+  const [ready, setReady] =
+    useState(false);
 
   const [mode, setMode] =
     useState<"voice" | "text">("voice");
@@ -73,12 +116,6 @@ export default function AppPage() {
   const [processingVoice, setProcessingVoice] =
     useState(false);
 
-  const [generatingAudio, setGeneratingAudio] =
-    useState(false);
-
-  const [isPlaying, setIsPlaying] =
-    useState(false);
-
   const [voiceError, setVoiceError] =
     useState("");
 
@@ -87,9 +124,6 @@ export default function AppPage() {
 
   const [voiceResponse, setVoiceResponse] =
     useState("");
-
-  const [audioAvailable, setAudioAvailable] =
-    useState(false);
 
   const [message, setMessage] =
     useState("");
@@ -106,11 +140,79 @@ export default function AppPage() {
   const [messages, setMessages] =
     useState<ChatMessage[]>([]);
 
+  const [conversations, setConversations] =
+    useState<Conversation[]>([]);
 
-  useEffect(() => {
-    const token = localStorage.getItem(
+  const [
+    loadingConversations,
+    setLoadingConversations,
+  ] = useState(false);
+
+  const [
+    loadingConversation,
+    setLoadingConversation,
+  ] = useState(false);
+
+  const [
+    conversationError,
+    setConversationError,
+  ] = useState("");
+
+  const [
+    openConversationMenu,
+    setOpenConversationMenu,
+  ] = useState<number | null>(null);
+
+  const [isSpeaking, setIsSpeaking] =
+    useState(false);
+
+  const [speechPaused, setSpeechPaused] =
+    useState(false);
+
+  const [speechRate, setSpeechRate] =
+    useState(1);
+
+  const [
+    availableVoices,
+    setAvailableVoices,
+  ] = useState<
+    SpeechSynthesisVoice[]
+  >([]);
+
+  const [
+    selectedVoiceName,
+    setSelectedVoiceName,
+  ] = useState("");
+
+  const [
+    userPreferences,
+    setUserPreferences,
+  ] = useState<UserPreferences | null>(
+    null
+  );
+
+
+  function getToken() {
+    return localStorage.getItem(
       "lumina_access_token"
     );
+  }
+
+
+  function stopActiveMicrophone() {
+    activeStreamRef.current
+      ?.getTracks()
+      .forEach((track) => {
+        track.stop();
+      });
+
+    activeStreamRef.current =
+      null;
+  }
+
+
+  useEffect(() => {
+    const token = getToken();
 
     if (!token) {
       router.replace("/login");
@@ -118,85 +220,727 @@ export default function AppPage() {
     }
 
     setReady(true);
+
+    void loadConversations();
+    void loadPreferences();
   }, [router]);
 
 
   useEffect(() => {
+    if (
+      typeof window ===
+        "undefined" ||
+      !(
+        "speechSynthesis" in
+        window
+      )
+    ) {
+      return;
+    }
+
+    function loadVoices() {
+      const voices =
+        window.speechSynthesis.getVoices();
+
+      setAvailableVoices(
+        voices
+      );
+
+      if (
+        voices.length > 0 &&
+        !selectedVoiceName
+      ) {
+        const savedVoice =
+          userPreferences?.preferred_voice &&
+          userPreferences.preferred_voice !==
+            "default"
+            ? voices.find(
+                (voice) =>
+                  voice.name ===
+                  userPreferences.preferred_voice
+              )
+            : undefined;
+
+        const languageVoice =
+          userPreferences?.preferred_language
+            ? voices.find(
+                (voice) =>
+                  voice.lang
+                    .toLowerCase()
+                    .startsWith(
+                      userPreferences.preferred_language.toLowerCase()
+                    )
+              )
+            : undefined;
+
+        const naturalVoice =
+          voices.find(
+            (voice) => {
+              const name =
+                voice.name.toLowerCase();
+
+              return (
+                voice.lang
+                  .toLowerCase()
+                  .startsWith(
+                    "en"
+                  ) &&
+                (
+                  name.includes(
+                    "natural"
+                  ) ||
+                  name.includes(
+                    "aria"
+                  ) ||
+                  name.includes(
+                    "jenny"
+                  ) ||
+                  name.includes(
+                    "zira"
+                  ) ||
+                  name.includes(
+                    "david"
+                  )
+                )
+              );
+            }
+          );
+
+        const englishVoice =
+          voices.find(
+            (voice) =>
+              voice.lang
+                .toLowerCase()
+                .startsWith(
+                  "en"
+                )
+          );
+
+        const preferred =
+          savedVoice ||
+          languageVoice ||
+          naturalVoice ||
+          englishVoice ||
+          voices[0];
+
+        if (preferred) {
+          setSelectedVoiceName(
+            preferred.name
+          );
+        }
+      }
+    }
+
+    loadVoices();
+
+    window.speechSynthesis.onvoiceschanged =
+      loadVoices;
+
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
+      window.speechSynthesis.onvoiceschanged =
+        null;
+    };
+  }, [
+    selectedVoiceName,
+    userPreferences,
+  ]);
+
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window !==
+          "undefined" &&
+        "speechSynthesis" in
+          window
+      ) {
+        window.speechSynthesis.cancel();
       }
 
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(
-          audioUrlRef.current
-        );
+      const recorder =
+        mediaRecorderRef.current;
+
+      if (
+        recorder &&
+        recorder.state !==
+          "inactive"
+      ) {
+        recorder.stop();
       }
+
+      stopActiveMicrophone();
     };
   }, []);
 
 
-  function stopCurrentAudio() {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
+  useEffect(() => {
+    if (mode !== "text") {
+      return;
     }
 
-    setIsPlaying(false);
-  }
+    const container =
+      chatScrollRef.current;
 
+    if (!container) {
+      return;
+    }
 
-  function clearAudio() {
-    stopCurrentAudio();
-
-    if (audioUrlRef.current) {
-      URL.revokeObjectURL(
-        audioUrlRef.current
+    const frame =
+      window.requestAnimationFrame(
+        () => {
+          container.scrollTo({
+            top:
+              container.scrollHeight,
+            behavior:
+              "smooth",
+          });
+        }
       );
 
-      audioUrlRef.current = null;
-    }
-
-    audioRef.current = null;
-
-    setAudioAvailable(false);
-  }
-
-
-  function logout() {
-    clearAudio();
-
-    localStorage.removeItem(
-      "lumina_access_token"
-    );
-
-    router.push("/login");
-  }
+    return () => {
+      window.cancelAnimationFrame(
+        frame
+      );
+    };
+  }, [
+    messages,
+    sending,
+    mode,
+  ]);
 
 
-  function startNewChat() {
-    clearAudio();
-
-    setConversationId(null);
-    setMessages([]);
-    setMessage("");
-    setError("");
-
-    setLiveTranscript("");
-    setVoiceResponse("");
-    setVoiceError("");
-  }
-
-
-  async function speakText(
-    text: string
-  ) {
-    const token = localStorage.getItem(
-      "lumina_access_token"
-    );
+  async function loadPreferences() {
+    const token =
+      getToken();
 
     if (!token) {
-      router.replace("/login");
+      router.replace(
+        "/login"
+      );
+      return;
+    }
+
+    try {
+      const response =
+        await fetch(
+          "http://127.0.0.1:8000/preferences/",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      if (
+        response.status === 401
+      ) {
+        localStorage.removeItem(
+          "lumina_access_token"
+        );
+
+        router.replace(
+          "/login"
+        );
+
+        return;
+      }
+
+      if (!response.ok) {
+        return;
+      }
+
+      const data:
+        UserPreferences =
+        await response.json();
+
+      setUserPreferences(
+        data
+      );
+
+      setSpeechRate(
+        data.speech_speed
+      );
+
+      if (
+        data.preferred_voice &&
+        data.preferred_voice !==
+          "default"
+      ) {
+        setSelectedVoiceName(
+          data.preferred_voice
+        );
+      }
+    } catch {
+      // Preferences should not
+      // prevent Lumina loading.
+    }
+  }
+
+
+  async function loadConversations() {
+    const token =
+      getToken();
+
+    if (!token) {
+      router.replace(
+        "/login"
+      );
+      return;
+    }
+
+    setLoadingConversations(
+      true
+    );
+
+    setConversationError(
+      ""
+    );
+
+    try {
+      const response =
+        await fetch(
+          "http://127.0.0.1:8000/conversations/",
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      if (
+        response.status === 401
+      ) {
+        localStorage.removeItem(
+          "lumina_access_token"
+        );
+
+        router.replace(
+          "/login"
+        );
+
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to load conversation history."
+        );
+      }
+
+      const data:
+        Conversation[] =
+        await response.json();
+
+      const sorted =
+        [...data].sort(
+          (a, b) =>
+            new Date(
+              b.updated_at
+            ).getTime() -
+            new Date(
+              a.updated_at
+            ).getTime()
+        );
+
+      setConversations(
+        sorted
+      );
+    } catch (err) {
+      if (
+        err instanceof Error
+      ) {
+        setConversationError(
+          err.message
+        );
+      }
+    } finally {
+      setLoadingConversations(
+        false
+      );
+    }
+  }
+
+
+  async function openConversation(
+    id: number
+  ) {
+    const token =
+      getToken();
+
+    if (!token) {
+      router.replace(
+        "/login"
+      );
+      return;
+    }
+
+    stopSpeech();
+    stopActiveMicrophone();
+
+    setLoadingConversation(
+      true
+    );
+
+    setConversationError(
+      ""
+    );
+
+    setError("");
+    setVoiceError("");
+
+    setOpenConversationMenu(
+      null
+    );
+
+    try {
+      const response =
+        await fetch(
+          `http://127.0.0.1:8000/conversations/${id}/messages`,
+          {
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      if (
+        response.status === 401
+      ) {
+        localStorage.removeItem(
+          "lumina_access_token"
+        );
+
+        router.replace(
+          "/login"
+        );
+
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to load this conversation."
+        );
+      }
+
+      const data:
+        BackendMessage[] =
+        await response.json();
+
+      const mappedMessages:
+        ChatMessage[] =
+        data
+          .filter(
+            (item) =>
+              item.role ===
+                "user" ||
+              item.role ===
+                "model" ||
+              item.role ===
+                "assistant"
+          )
+          .map(
+            (item) => ({
+              role:
+                item.role ===
+                "user"
+                  ? "user"
+                  : "assistant",
+
+              content:
+                item.content,
+            })
+          );
+
+      setConversationId(
+        id
+      );
+
+      setMessages(
+        mappedMessages
+      );
+
+      setMode(
+        "text"
+      );
+
+      setLiveTranscript(
+        ""
+      );
+
+      setVoiceResponse(
+        ""
+      );
+    } catch (err) {
+      if (
+        err instanceof Error
+      ) {
+        setConversationError(
+          err.message
+        );
+      }
+    } finally {
+      setLoadingConversation(
+        false
+      );
+    }
+  }
+
+
+  async function renameConversation(
+    conversation:
+      Conversation
+  ) {
+    const newTitle =
+      window.prompt(
+        "Rename conversation:",
+        conversation.title ||
+          ""
+      );
+
+    if (
+      !newTitle ||
+      !newTitle.trim()
+    ) {
+      setOpenConversationMenu(
+        null
+      );
+      return;
+    }
+
+    const token =
+      getToken();
+
+    if (!token) {
+      router.replace(
+        "/login"
+      );
+      return;
+    }
+
+    try {
+      const response =
+        await fetch(
+          `http://127.0.0.1:8000/conversations/${conversation.id}`,
+          {
+            method:
+              "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body:
+              JSON.stringify({
+                title:
+                  newTitle.trim(),
+              }),
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to rename conversation."
+        );
+      }
+
+      await loadConversations();
+    } catch (err) {
+      if (
+        err instanceof Error
+      ) {
+        setConversationError(
+          err.message
+        );
+      }
+    } finally {
+      setOpenConversationMenu(
+        null
+      );
+    }
+  }
+
+
+  async function deleteConversation(
+    conversation:
+      Conversation
+  ) {
+    const confirmed =
+      window.confirm(
+        `Delete "${
+          conversation.title ||
+          "Untitled conversation"
+        }"?`
+      );
+
+    if (!confirmed) {
+      setOpenConversationMenu(
+        null
+      );
+      return;
+    }
+
+    const token =
+      getToken();
+
+    if (!token) {
+      router.replace(
+        "/login"
+      );
+      return;
+    }
+
+    try {
+      const response =
+        await fetch(
+          `http://127.0.0.1:8000/conversations/${conversation.id}`,
+          {
+            method:
+              "DELETE",
+
+            headers: {
+              Authorization:
+                `Bearer ${token}`,
+            },
+          }
+        );
+
+      if (!response.ok) {
+        throw new Error(
+          "Unable to delete conversation."
+        );
+      }
+
+      if (
+        conversationId ===
+        conversation.id
+      ) {
+        startNewChat();
+      }
+
+      await loadConversations();
+    } catch (err) {
+      if (
+        err instanceof Error
+      ) {
+        setConversationError(
+          err.message
+        );
+      }
+    } finally {
+      setOpenConversationMenu(
+        null
+      );
+    }
+  }
+
+
+  function stopSpeech() {
+    if (
+      typeof window ===
+        "undefined" ||
+      !(
+        "speechSynthesis" in
+        window
+      )
+    ) {
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    setIsSpeaking(
+      false
+    );
+
+    setSpeechPaused(
+      false
+    );
+  }
+
+
+  function pauseSpeech() {
+    if (
+      typeof window ===
+        "undefined" ||
+      !(
+        "speechSynthesis" in
+        window
+      )
+    ) {
+      return;
+    }
+
+    if (
+      window.speechSynthesis
+        .speaking &&
+      !window.speechSynthesis
+        .paused
+    ) {
+      window.speechSynthesis.pause();
+
+      setSpeechPaused(
+        true
+      );
+
+      setIsSpeaking(
+        false
+      );
+    }
+  }
+
+
+  function resumeSpeech() {
+    if (
+      typeof window ===
+        "undefined" ||
+      !(
+        "speechSynthesis" in
+        window
+      )
+    ) {
+      return;
+    }
+
+    if (
+      window.speechSynthesis
+        .paused
+    ) {
+      window.speechSynthesis.resume();
+
+      setSpeechPaused(
+        false
+      );
+
+      setIsSpeaking(
+        true
+      );
+    }
+  }
+
+
+  function speakResponse(
+    text: string
+  ) {
+    if (
+      typeof window ===
+        "undefined" ||
+      !(
+        "speechSynthesis" in
+        window
+      )
+    ) {
+      setVoiceError(
+        "Speech synthesis is not supported by this browser."
+      );
+
       return;
     }
 
@@ -204,181 +948,232 @@ export default function AppPage() {
       return;
     }
 
-    setGeneratingAudio(true);
-    setVoiceError("");
+    /*
+     * CRITICAL FEEDBACK-LOOP FIX:
+     *
+     * Lumina must never have an
+     * active microphone while
+     * speaking.
+     */
 
-    try {
-      stopCurrentAudio();
+    const recorder =
+      mediaRecorderRef.current;
 
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(
-          audioUrlRef.current
-        );
+    if (
+      recorder &&
+      recorder.state !==
+        "inactive"
+    ) {
+      recorder.stop();
 
-        audioUrlRef.current = null;
-      }
+      setRecording(
+        false
+      );
+    }
 
-      const formData = new FormData();
+    stopActiveMicrophone();
 
-      formData.append(
-        "text",
+    window.speechSynthesis.cancel();
+
+    const utterance =
+      new SpeechSynthesisUtterance(
         text
       );
 
-      const response = await fetch(
-        "http://127.0.0.1:8000/voice/speak",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        }
+    const voices =
+      window.speechSynthesis.getVoices();
+
+    const chosenVoice =
+      voices.find(
+        (voice) =>
+          voice.name ===
+          selectedVoiceName
       );
 
-      if (response.status === 401) {
-        localStorage.removeItem(
-          "lumina_access_token"
-        );
+    if (chosenVoice) {
+      utterance.voice =
+        chosenVoice;
+    }
 
-        router.replace("/login");
-        return;
-      }
+    utterance.rate =
+      speechRate;
 
-      if (!response.ok) {
-        let detail =
-          "Unable to generate voice audio.";
+    utterance.pitch = 1;
+    utterance.volume = 1;
 
-        try {
-          const data =
-            await response.json();
-
-          if (
-            typeof data.detail ===
-            "string"
-          ) {
-            detail = data.detail;
-          }
-        } catch {
-          // Use fallback error.
-        }
-
-        throw new Error(detail);
-      }
-
-      const audioBlob =
-        await response.blob();
-
-      const audioUrl =
-        URL.createObjectURL(
-          audioBlob
-        );
-
-      audioUrlRef.current =
-        audioUrl;
-
-      const audio =
-        new Audio(audioUrl);
-
-      audioRef.current =
-        audio;
-
-      audio.onplay = () => {
-        setIsPlaying(true);
-      };
-
-      audio.onpause = () => {
-        setIsPlaying(false);
-      };
-
-      audio.onended = () => {
-        setIsPlaying(false);
-      };
-
-      setAudioAvailable(true);
-
-      try {
-        await audio.play();
-      } catch {
+    utterance.onstart =
+      () => {
         /*
-          Some browsers may block automatic
-          playback after asynchronous processing.
+         * Double check that
+         * microphone is dead
+         * before speech starts.
+         */
+        stopActiveMicrophone();
 
-          The audio is still ready and the user
-          can press the Play button manually.
-        */
-        setIsPlaying(false);
-      }
-    } catch (err) {
-      if (err instanceof Error) {
-        setVoiceError(
-          err.message
+        setIsSpeaking(
+          true
         );
-      } else {
-        setVoiceError(
-          "Unable to play Lumina's voice."
+
+        setSpeechPaused(
+          false
         );
-      }
-    } finally {
-      setGeneratingAudio(false);
+      };
+
+    utterance.onend =
+      () => {
+        setIsSpeaking(
+          false
+        );
+
+        setSpeechPaused(
+          false
+        );
+      };
+
+    utterance.onerror =
+      (event) => {
+        setIsSpeaking(
+          false
+        );
+
+        setSpeechPaused(
+          false
+        );
+
+        if (
+          event.error !==
+          "interrupted"
+        ) {
+          setVoiceError(
+            "Lumina could not speak the response."
+          );
+        }
+      };
+
+    lastSpokenTextRef.current =
+      text;
+
+    window.speechSynthesis.speak(
+      utterance
+    );
+  }
+
+
+  function replaySpeech() {
+    if (
+      lastSpokenTextRef.current
+    ) {
+      speakResponse(
+        lastSpokenTextRef.current
+      );
     }
   }
 
 
-  function toggleAudioPlayback() {
-    const audio =
-      audioRef.current;
+  function logout() {
+    stopSpeech();
+    stopActiveMicrophone();
 
-    if (!audio) {
-      if (voiceResponse) {
-        void speakText(
-          voiceResponse
-        );
-      }
+    localStorage.removeItem(
+      "lumina_access_token"
+    );
 
-      return;
-    }
-
-    if (audio.paused) {
-      void audio.play();
-    } else {
-      audio.pause();
-    }
+    router.push(
+      "/login"
+    );
   }
 
 
-  function replayAudio() {
-    const audio =
-      audioRef.current;
+  function startNewChat() {
+    stopSpeech();
+    stopActiveMicrophone();
 
-    if (!audio) {
-      if (voiceResponse) {
-        void speakText(
-          voiceResponse
-        );
-      }
+    setRecording(
+      false
+    );
 
-      return;
-    }
+    setConversationId(
+      null
+    );
 
-    audio.currentTime = 0;
+    setMessages(
+      []
+    );
 
-    void audio.play();
+    setMessage(
+      ""
+    );
+
+    setError(
+      ""
+    );
+
+    setLiveTranscript(
+      ""
+    );
+
+    setVoiceResponse(
+      ""
+    );
+
+    setVoiceError(
+      ""
+    );
+
+    setOpenConversationMenu(
+      null
+    );
+
+    lastSpokenTextRef.current =
+      "";
   }
 
 
   async function startRecording() {
+    if (processingVoice || isSpeaking) {
+      return;
+    }
+
     setVoiceError("");
     setLiveTranscript("");
     setVoiceResponse("");
 
-    clearAudio();
+    /*
+     * Always completely cancel old speech before
+     * opening the microphone.
+     */
+    if (
+      typeof window !== "undefined" &&
+      "speechSynthesis" in window
+    ) {
+      window.speechSynthesis.cancel();
+    }
+
+    setIsSpeaking(false);
+    setSpeechPaused(false);
+
+    stopActiveMicrophone();
+
+    /*
+     * Give the speakers a moment to become silent
+     * before opening the microphone.
+     */
+    await new Promise<void>((resolve) => {
+      window.setTimeout(resolve, 250);
+    });
 
     try {
       const stream =
         await navigator.mediaDevices.getUserMedia({
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          },
         });
+
+      activeStreamRef.current = stream;
 
       let mimeType = "";
 
@@ -394,8 +1189,7 @@ export default function AppPage() {
           "audio/webm"
         )
       ) {
-        mimeType =
-          "audio/webm";
+        mimeType = "audio/webm";
       } else if (
         MediaRecorder.isTypeSupported(
           "audio/ogg;codecs=opus"
@@ -405,17 +1199,11 @@ export default function AppPage() {
           "audio/ogg;codecs=opus";
       }
 
-      const recorder =
-        mimeType
-          ? new MediaRecorder(
-              stream,
-              {
-                mimeType,
-              }
-            )
-          : new MediaRecorder(
-              stream
-            );
+      const recorder = mimeType
+        ? new MediaRecorder(stream, {
+            mimeType,
+          })
+        : new MediaRecorder(stream);
 
       audioChunksRef.current = [];
 
@@ -429,26 +1217,40 @@ export default function AppPage() {
         }
       };
 
+      recorder.onerror = () => {
+        stopActiveMicrophone();
+
+        setRecording(false);
+
+        setVoiceError(
+          "The microphone recording failed."
+        );
+      };
+
       recorder.onstop = async () => {
-        stream
-          .getTracks()
-          .forEach((track) =>
-            track.stop()
-          );
+        stopActiveMicrophone();
 
         const finalMimeType =
           recorder.mimeType ||
           mimeType ||
           "audio/webm";
 
-        const audioBlob =
-          new Blob(
-            audioChunksRef.current,
-            {
-              type:
-                finalMimeType,
-            }
+        const audioBlob = new Blob(
+          audioChunksRef.current,
+          {
+            type: finalMimeType,
+          }
+        );
+
+        mediaRecorderRef.current = null;
+
+        if (audioBlob.size === 0) {
+          setVoiceError(
+            "No audio was recorded. Please try again."
           );
+
+          return;
+        }
 
         await sendVoiceMessage(
           audioBlob
@@ -458,10 +1260,19 @@ export default function AppPage() {
       mediaRecorderRef.current =
         recorder;
 
-      recorder.start();
+      recorder.start(250);
 
       setRecording(true);
-    } catch {
+    } catch (err) {
+      console.error(
+        "MICROPHONE ERROR:",
+        err
+      );
+
+      stopActiveMicrophone();
+
+      setRecording(false);
+
       setVoiceError(
         "Microphone access was denied or is unavailable."
       );
@@ -474,17 +1285,25 @@ export default function AppPage() {
       mediaRecorderRef.current;
 
     if (!recorder) {
+      stopActiveMicrophone();
+
+      setRecording(
+        false
+      );
+
       return;
     }
 
     if (
       recorder.state !==
-      "inactive"
+        "inactive"
     ) {
       recorder.stop();
     }
 
-    setRecording(false);
+    setRecording(
+      false
+    );
   }
 
 
@@ -492,30 +1311,60 @@ export default function AppPage() {
     audioBlob: Blob
   ) {
     const token =
-      localStorage.getItem(
-        "lumina_access_token"
-      );
+      getToken();
 
     if (!token) {
-      router.replace("/login");
+      router.replace(
+        "/login"
+      );
+
       return;
     }
 
-    setProcessingVoice(true);
-    setVoiceError("");
+    /*
+     * The microphone must remain
+     * OFF during transcription,
+     * AI processing and speech.
+     */
+
+    stopActiveMicrophone();
+
+    setProcessingVoice(
+      true
+    );
+
+    setVoiceError(
+      ""
+    );
 
     try {
       const formData =
         new FormData();
 
-      let extension = "webm";
+      let extension =
+        "webm";
 
       if (
         audioBlob.type.includes(
           "ogg"
         )
       ) {
-        extension = "ogg";
+        extension =
+          "ogg";
+      } else if (
+        audioBlob.type.includes(
+          "wav"
+        )
+      ) {
+        extension =
+          "wav";
+      } else if (
+        audioBlob.type.includes(
+          "mp4"
+        )
+      ) {
+        extension =
+          "m4a";
       }
 
       formData.append(
@@ -525,7 +1374,8 @@ export default function AppPage() {
       );
 
       if (
-        conversationId !== null
+        conversationId !==
+        null
       ) {
         formData.append(
           "conversation_id",
@@ -539,17 +1389,22 @@ export default function AppPage() {
         await fetch(
           "http://127.0.0.1:8000/voice/chat",
           {
-            method: "POST",
+            method:
+              "POST",
+
             headers: {
               Authorization:
                 `Bearer ${token}`,
             },
-            body: formData,
+
+            body:
+              formData,
           }
         );
 
       if (
-        response.status === 401
+        response.status ===
+        401
       ) {
         localStorage.removeItem(
           "lumina_access_token"
@@ -586,7 +1441,8 @@ export default function AppPage() {
         );
       }
 
-      const data: VoiceResponse =
+      const data:
+        VoiceResponse =
         await response.json();
 
       setConversationId(
@@ -604,26 +1460,40 @@ export default function AppPage() {
       setMessages(
         (current) => [
           ...current,
+
           {
-            role: "user",
+            role:
+              "user",
+
             content:
               data.transcript,
           },
+
           {
-            role: "assistant",
+            role:
+              "assistant",
+
             content:
               data.response,
           },
         ]
       );
 
-      if (
-        data.audio_available
-      ) {
-        await speakText(
-          data.response
-        );
-      }
+      /*
+       * Processing ends before
+       * speaking starts, but the
+       * microphone remains off.
+       */
+
+      setProcessingVoice(
+        false
+      );
+
+      speakResponse(
+        data.response
+      );
+
+      void loadConversations();
     } catch (err) {
       if (
         err instanceof Error
@@ -640,14 +1510,17 @@ export default function AppPage() {
       setProcessingVoice(
         false
       );
+
+      stopActiveMicrophone();
     }
   }
 
 
   async function sendMessage(
-    event: FormEvent<HTMLFormElement>
+    event?:
+      FormEvent<HTMLFormElement>
   ) {
-    event.preventDefault();
+    event?.preventDefault();
 
     const trimmedMessage =
       message.trim();
@@ -660,54 +1533,72 @@ export default function AppPage() {
     }
 
     const token =
-      localStorage.getItem(
-        "lumina_access_token"
-      );
+      getToken();
 
     if (!token) {
-      router.replace("/login");
+      router.replace(
+        "/login"
+      );
+
       return;
     }
 
-    setError("");
-    setSending(true);
+    setError(
+      ""
+    );
+
+    setSending(
+      true
+    );
 
     setMessages(
       (current) => [
         ...current,
+
         {
-          role: "user",
+          role:
+            "user",
+
           content:
             trimmedMessage,
         },
       ]
     );
 
-    setMessage("");
+    setMessage(
+      ""
+    );
 
     try {
       const response =
         await fetch(
           "http://127.0.0.1:8000/chat/",
           {
-            method: "POST",
+            method:
+              "POST",
+
             headers: {
               "Content-Type":
                 "application/json",
+
               Authorization:
                 `Bearer ${token}`,
             },
-            body: JSON.stringify({
-              message:
-                trimmedMessage,
-              conversation_id:
-                conversationId,
-            }),
+
+            body:
+              JSON.stringify({
+                message:
+                  trimmedMessage,
+
+                conversation_id:
+                  conversationId,
+              }),
           }
         );
 
       if (
-        response.status === 401
+        response.status ===
+        401
       ) {
         localStorage.removeItem(
           "lumina_access_token"
@@ -744,7 +1635,8 @@ export default function AppPage() {
         );
       }
 
-      const data: ChatResponse =
+      const data:
+        ChatResponse =
         await response.json();
 
       setConversationId(
@@ -754,13 +1646,35 @@ export default function AppPage() {
       setMessages(
         (current) => [
           ...current,
+
           {
-            role: "assistant",
+            role:
+              "assistant",
+
             content:
               data.response,
           },
         ]
       );
+
+      /*
+       * Only automatically speak
+       * normal chat responses when
+       * the user is in voice mode.
+       *
+       * In text mode the speaker
+       * icon can still be used.
+       */
+
+      if (
+        mode === "voice"
+      ) {
+        speakResponse(
+          data.response
+        );
+      }
+
+      void loadConversations();
     } catch (err) {
       if (
         err instanceof Error
@@ -774,7 +1688,9 @@ export default function AppPage() {
         );
       }
     } finally {
-      setSending(false);
+      setSending(
+        false
+      );
     }
   }
 
@@ -793,15 +1709,59 @@ export default function AppPage() {
 
 
   return (
-    <main className="min-h-screen bg-[#050708] text-white">
+    <main
+      className={
+        userPreferences?.high_contrast_mode
+          ? "min-h-screen bg-black text-white"
+          : "min-h-screen bg-[#050708] text-white"
+      }
+      style={{
+        fontSize:
+          userPreferences
+            ? `${userPreferences.font_size}px`
+            : undefined,
+
+        letterSpacing:
+          userPreferences?.dyslexia_mode
+            ? "0.04em"
+            : undefined,
+
+        wordSpacing:
+          userPreferences?.dyslexia_mode
+            ? "0.12em"
+            : undefined,
+
+        lineHeight:
+          userPreferences?.dyslexia_mode
+            ? 1.8
+            : undefined,
+      }}
+    >
+      <MobileNav
+        mode={mode}
+        onModeChange={(
+          nextMode
+        ) => {
+          stopSpeech();
+          stopActiveMicrophone();
+          setRecording(false);
+
+          setMode(
+            nextMode
+          );
+        }}
+        onLogout={logout}
+      />
+
+
       <div className="flex min-h-screen">
 
-        <aside className="hidden w-72 shrink-0 border-r border-white/8 bg-black/20 p-5 backdrop-blur-xl lg:block">
+        {/* DESKTOP SIDEBAR */}
 
-          <div className="flex h-full flex-col">
+        <aside className="hidden w-80 shrink-0 border-r border-white/10 bg-black/20 p-5 backdrop-blur-xl lg:block">
+          <div className="flex h-screen flex-col">
 
             <div className="flex items-center gap-3">
-
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
                 <BrainCircuit className="h-5 w-5" />
               </div>
@@ -812,19 +1772,22 @@ export default function AppPage() {
                 </div>
 
                 <div className="text-xs uppercase tracking-[0.18em] text-white/35">
-                  Voice workspace
+                  Intelligent voice
                 </div>
               </div>
-
             </div>
 
 
-            <nav className="mt-10 space-y-2">
+            <nav className="mt-8 space-y-2">
 
               <button
-                onClick={() =>
-                  setMode("voice")
-                }
+                type="button"
+                onClick={() => {
+                  stopSpeech();
+                  stopActiveMicrophone();
+                  setRecording(false);
+                  setMode("voice");
+                }}
                 className={
                   mode === "voice"
                     ? "flex w-full items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 text-left"
@@ -835,10 +1798,15 @@ export default function AppPage() {
                 Voice
               </button>
 
+
               <button
-                onClick={() =>
-                  setMode("text")
-                }
+                type="button"
+                onClick={() => {
+                  stopSpeech();
+                  stopActiveMicrophone();
+                  setRecording(false);
+                  setMode("text");
+                }}
                 className={
                   mode === "text"
                     ? "flex w-full items-center gap-3 rounded-2xl bg-white/10 px-4 py-3 text-left"
@@ -849,75 +1817,261 @@ export default function AppPage() {
                 Chat
               </button>
 
-              <button className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white">
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/documents"
+                  )
+                }
+                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white"
+              >
                 <FileText className="h-4 w-4" />
                 Documents
               </button>
 
-              <button className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white">
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/preferences"
+                  )
+                }
+                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white"
+              >
                 <Settings className="h-4 w-4" />
                 Preferences
+              </button>
+
+
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(
+                    "/profile"
+                  )
+                }
+                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white"
+              >
+                <UserRound className="h-4 w-4" />
+                Profile
               </button>
 
             </nav>
 
 
-            <div className="mt-auto">
+            {/* HISTORY */}
 
+            <div className="mt-7 flex min-h-0 flex-1 flex-col border-t border-white/10 pt-5">
+
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <History className="h-4 w-4 text-white/35" />
+
+                  <span className="text-xs uppercase tracking-[0.18em] text-white/35">
+                    History
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void loadConversations()
+                  }
+                  className="text-xs text-white/35 transition hover:text-white"
+                >
+                  Refresh
+                </button>
+              </div>
+
+
+              {conversationError && (
+                <div className="mx-1 mt-3 rounded-xl border border-red-400/10 bg-red-400/10 px-3 py-2 text-xs text-red-200">
+                  {conversationError}
+                </div>
+              )}
+
+
+              <div className="mt-3 min-h-0 flex-1 overflow-y-auto pr-1">
+
+                {loadingConversations ? (
+                  <div className="px-3 py-6 text-sm text-white/30">
+                    Loading history...
+                  </div>
+                ) : conversations.length ===
+                  0 ? (
+                  <div className="px-3 py-6 text-sm text-white/30">
+                    No conversations yet.
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+
+                    {conversations.map(
+                      (
+                        conversation
+                      ) => (
+                        <div
+                          key={
+                            conversation.id
+                          }
+                          className="group relative"
+                        >
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openConversation(
+                                conversation.id
+                              )
+                            }
+                            className={
+                              conversationId ===
+                              conversation.id
+                                ? "w-full rounded-xl bg-white/10 px-3 py-3 pr-10 text-left"
+                                : "w-full rounded-xl px-3 py-3 pr-10 text-left text-white/55 transition hover:bg-white/[0.05] hover:text-white"
+                            }
+                          >
+                            <p className="truncate text-sm">
+                              {conversation.title ||
+                                "Untitled conversation"}
+                            </p>
+
+                            <p className="mt-1 text-[11px] text-white/25">
+                              {new Date(
+                                conversation.updated_at
+                              ).toLocaleDateString()}
+                            </p>
+                          </button>
+
+
+                          <button
+                            type="button"
+                            onClick={(
+                              event
+                            ) => {
+                              event.stopPropagation();
+
+                              setOpenConversationMenu(
+                                openConversationMenu ===
+                                  conversation.id
+                                  ? null
+                                  : conversation.id
+                              );
+                            }}
+                            className="absolute right-2 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-white/25 opacity-0 transition hover:bg-white/10 hover:text-white group-hover:opacity-100"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </button>
+
+
+                          {openConversationMenu ===
+                            conversation.id && (
+                            <div className="absolute right-2 top-11 z-40 w-36 rounded-xl border border-white/10 bg-[#111315] p-1 shadow-2xl">
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void renameConversation(
+                                    conversation
+                                  )
+                                }
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-white/65 transition hover:bg-white/10 hover:text-white"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Rename
+                              </button>
+
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void deleteConversation(
+                                    conversation
+                                  )
+                                }
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-red-300 transition hover:bg-red-400/10"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+
+                            </div>
+                          )}
+
+                        </div>
+                      )
+                    )}
+
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+
+            <div className="border-t border-white/10 pt-4">
               <button
+                type="button"
                 onClick={logout}
                 className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-white/45 transition hover:bg-white/[0.05] hover:text-white"
               >
                 <LogOut className="h-4 w-4" />
                 Sign out
               </button>
-
             </div>
 
           </div>
-
         </aside>
 
 
-        <section className="flex-1 overflow-hidden">
+        {/* MAIN */}
 
+        <section className="flex-1 overflow-hidden">
           <div className="relative min-h-screen">
 
             <div className="pointer-events-none absolute inset-0 overflow-hidden">
-              <div className="absolute left-1/2 top-[12%] h-[620px] w-[620px] -translate-x-1/2 rounded-full bg-white/[0.025] blur-[190px]" />
+              <div className="absolute left-1/2 top-[12%] h-[650px] w-[650px] -translate-x-1/2 rounded-full bg-white/[0.025] blur-[200px]" />
+
+              <div className="absolute bottom-[-220px] right-[5%] h-[500px] w-[500px] rounded-full bg-white/[0.02] blur-[190px]" />
             </div>
 
 
-            <div className="relative z-10 mx-auto max-w-6xl px-6 py-8 md:px-10">
+            <div className="relative z-10 mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-6 md:px-10 md:py-8">
 
-              <div className="flex items-center justify-between gap-6">
+              {/* HEADER */}
+
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
 
                 <div>
-
                   <p className="text-xs uppercase tracking-[0.22em] text-white/35">
                     Lumina workspace
                   </p>
 
                   <h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] md:text-4xl">
-                    {mode === "voice"
+                    {mode ===
+                    "voice"
                       ? "Talk to Lumina."
                       : "Chat with Lumina."}
                   </h1>
-
                 </div>
 
 
                 <motion.button
+                  type="button"
                   onClick={
                     startNewChat
                   }
                   whileHover={{
-                    scale: 1.04,
+                    scale:
+                      1.04,
                   }}
                   whileTap={{
-                    scale: 0.97,
+                    scale:
+                      0.97,
                   }}
-                  className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white/70 backdrop-blur-xl"
+                  className="w-full rounded-full border border-white/10 bg-white/[0.05] px-4 py-2.5 text-sm text-white/70 backdrop-blur-xl sm:w-auto"
                 >
                   New conversation
                 </motion.button>
@@ -925,74 +2079,45 @@ export default function AppPage() {
               </div>
 
 
-              {mode === "voice" ? (
+              {loadingConversation && (
+                <div className="mt-6 flex items-center gap-2 text-sm text-white/40">
+                  <Sparkles className="h-4 w-4 animate-pulse" />
+
+                  Loading conversation...
+                </div>
+              )}
+
+
+              {/* VOICE MODE */}
+
+              {mode ===
+              "voice" ? (
 
                 <motion.section
                   initial={{
-                    opacity: 0,
-                    scale: 0.96,
+                    opacity:
+                      0,
+
+                    scale:
+                      0.96,
                   }}
                   animate={{
-                    opacity: 1,
-                    scale: 1,
+                    opacity:
+                      1,
+
+                    scale:
+                      1,
                   }}
                   transition={{
-                    duration: 0.7,
+                    duration:
+                      0.7,
                   }}
-                  className="mt-12"
+                  className="mt-10"
                 >
 
-                  <div className="flex min-h-[520px] flex-col items-center justify-center">
+                  <div className="flex min-h-[500px] flex-col items-center justify-center">
 
-
-                    <div className="relative flex h-[340px] w-[340px] items-center justify-center">
-
-                      <motion.div
-                        animate={
-                          recording
-                            ? {
-                                scale: [
-                                  1,
-                                  1.14,
-                                  1,
-                                ],
-                                opacity: [
-                                  0.4,
-                                  0.08,
-                                  0.4,
-                                ],
-                              }
-                            : isPlaying
-                            ? {
-                                scale: [
-                                  1,
-                                  1.1,
-                                  1,
-                                ],
-                              }
-                            : {
-                                scale: [
-                                  1,
-                                  1.035,
-                                  1,
-                                ],
-                              }
-                        }
-                        transition={{
-                          duration:
-                            recording
-                              ? 1.1
-                              : isPlaying
-                              ? 1.7
-                              : 4,
-                          repeat:
-                            Infinity,
-                          ease:
-                            "easeInOut",
-                        }}
-                        className="absolute h-[310px] w-[310px] rounded-full border border-white/10 bg-white/[0.025]"
-                      />
-
+                    <div className="relative flex h-[260px] w-[260px] items-center justify-center sm:h-[340px] sm:w-[340px]">
 
                       <motion.div
                         animate={
@@ -1003,20 +2128,78 @@ export default function AppPage() {
                                   1.18,
                                   1,
                                 ],
+
+                                opacity: [
+                                  0.5,
+                                  0.08,
+                                  0.5,
+                                ],
+                              }
+                            : isSpeaking
+                            ? {
+                                scale: [
+                                  1,
+                                  1.13,
+                                  1,
+                                ],
+
+                                opacity: [
+                                  0.4,
+                                  0.12,
+                                  0.4,
+                                ],
+                              }
+                            : {
+                                scale: [
+                                  1,
+                                  1.04,
+                                  1,
+                                ],
+                              }
+                        }
+                        transition={{
+                          duration:
+                            recording
+                              ? 1.1
+                              : isSpeaking
+                              ? 1.5
+                              : 4,
+
+                          repeat:
+                            Infinity,
+
+                          ease:
+                            "easeInOut",
+                        }}
+                        className="absolute h-[240px] w-[240px] rounded-full border border-white/10 bg-white/[0.025] sm:h-[320px] sm:w-[320px]"
+                      />
+
+
+                      <motion.div
+                        animate={
+                          recording
+                            ? {
+                                scale: [
+                                  1,
+                                  1.12,
+                                  1,
+                                ],
+
                                 rotate: [
                                   0,
-                                  6,
-                                  -6,
+                                  5,
+                                  -5,
                                   0,
                                 ],
                               }
-                            : isPlaying
+                            : isSpeaking
                             ? {
                                 scale: [
                                   1,
                                   1.08,
                                   1,
                                 ],
+
                                 rotate: [
                                   0,
                                   2,
@@ -1035,29 +2218,34 @@ export default function AppPage() {
                         transition={{
                           duration:
                             recording
-                              ? 1.5
-                              : isPlaying
-                              ? 2
+                              ? 1.4
+                              : isSpeaking
+                              ? 1.8
                               : 5,
+
                           repeat:
                             Infinity,
+
                           ease:
                             "easeInOut",
                         }}
-                        className="absolute h-[235px] w-[235px] rounded-full border border-white/15 bg-black/30 shadow-[0_0_100px_rgba(255,255,255,0.06)] backdrop-blur-2xl"
+                        className="absolute h-[180px] w-[180px] rounded-full border border-white/15 bg-black/30 shadow-[0_0_120px_rgba(255,255,255,0.07)] backdrop-blur-2xl sm:h-[240px] sm:w-[240px]"
                       />
 
 
                       <motion.button
                         type="button"
-                        onClick={
-                          recording
-                            ? stopRecording
-                            : startRecording
-                        }
+                        onClick={() => {
+                          if (recording) {
+                            stopRecording();
+                            return;
+                          }
+
+                          void startRecording();
+                        }}
                         disabled={
                           processingVoice ||
-                          generatingAudio
+                          isSpeaking
                         }
                         whileHover={{
                           scale: 1.06,
@@ -1065,11 +2253,10 @@ export default function AppPage() {
                         whileTap={{
                           scale: 0.94,
                         }}
-                        className="relative z-10 flex h-32 w-32 items-center justify-center rounded-full bg-white text-black shadow-[0_20px_80px_rgba(255,255,255,0.15)] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full bg-white text-black shadow-[0_20px_80px_rgba(255,255,255,0.15)] disabled:cursor-not-allowed disabled:opacity-60 sm:h-32 sm:w-32"
                       >
 
-                        {processingVoice ||
-                        generatingAudio ? (
+                        {processingVoice ? (
                           <Waves className="h-10 w-10 animate-pulse" />
                         ) : recording ? (
                           <Square className="h-9 w-9 fill-current" />
@@ -1082,29 +2269,110 @@ export default function AppPage() {
                     </div>
 
 
-                    <div className="mt-3 text-center">
+                    <div className="mt-2 text-center">
 
                       <h2 className="text-2xl font-semibold">
                         {processingVoice
                           ? "Lumina is thinking..."
-                          : generatingAudio
-                          ? "Preparing voice..."
                           : recording
                           ? "Listening..."
-                          : isPlaying
+                          : isSpeaking
                           ? "Lumina is speaking..."
+                          : speechPaused
+                          ? "Voice paused."
                           : "Tap to speak"}
                       </h2>
 
-                      <p className="mt-2 text-sm text-white/45">
+
+                      <p className="mt-2 max-w-xl text-sm leading-6 text-white/45">
                         {recording
-                          ? "Tap again when you finish speaking."
-                          : isPlaying
-                          ? "Listen naturally, or pause the response below."
-                          : "Speak naturally. Lumina will listen, understand and respond."}
+                          ? "Speak naturally and tap again when you finish."
+                          : processingVoice
+                          ? "Your speech is being transcribed and understood."
+                          : isSpeaking
+                          ? "Lumina is reading the response aloud. The microphone is disabled."
+                          : speechPaused
+                          ? "Resume or stop Lumina before speaking again."
+                          : "Speak naturally. Lumina will listen, understand and answer."}
                       </p>
 
                     </div>
+
+
+                    {(voiceResponse ||
+                      isSpeaking ||
+                      speechPaused) && (
+
+                      <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+
+                        <motion.button
+                          type="button"
+                          onClick={
+                            isSpeaking
+                              ? pauseSpeech
+                              : resumeSpeech
+                          }
+                          disabled={
+                            !isSpeaking &&
+                            !speechPaused
+                          }
+                          whileHover={{
+                            scale:
+                              1.05,
+                          }}
+                          whileTap={{
+                            scale:
+                              0.95,
+                          }}
+                          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
+                        >
+                          {isSpeaking ? (
+                            <Pause className="h-4 w-4" />
+                          ) : (
+                            <Play className="h-4 w-4" />
+                          )}
+                        </motion.button>
+
+
+                        <motion.button
+                          type="button"
+                          onClick={
+                            replaySpeech
+                          }
+                          whileHover={{
+                            scale:
+                              1.05,
+                          }}
+                          whileTap={{
+                            scale:
+                              0.95,
+                          }}
+                          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <RotateCcw className="h-4 w-4" />
+                        </motion.button>
+
+
+                        <motion.button
+                          type="button"
+                          onClick={
+                            stopSpeech
+                          }
+                          whileHover={{
+                            scale:
+                              1.05,
+                          }}
+                          whileTap={{
+                            scale:
+                              0.95,
+                          }}
+                          className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <StopCircle className="h-4 w-4" />
+                        </motion.button>
+
+                      </div>
+                    )}
 
 
                     {voiceError && (
@@ -1119,12 +2387,18 @@ export default function AppPage() {
 
                       <motion.div
                         initial={{
-                          opacity: 0,
-                          y: 25,
+                          opacity:
+                            0,
+
+                          y:
+                            25,
                         }}
                         animate={{
-                          opacity: 1,
-                          y: 0,
+                          opacity:
+                            1,
+
+                          y:
+                            0,
                         }}
                         className="mt-10 grid w-full max-w-4xl gap-4 md:grid-cols-2"
                       >
@@ -1147,91 +2421,127 @@ export default function AppPage() {
                           <div className="flex items-center justify-between gap-4">
 
                             <div>
-
                               <p className="text-xs uppercase tracking-[0.2em] text-white/35">
                                 Lumina
                               </p>
 
-                              {isPlaying && (
+                              {isSpeaking && (
                                 <div className="mt-2 flex items-center gap-2 text-xs text-white/45">
                                   <Volume2 className="h-3.5 w-3.5" />
                                   Speaking
                                 </div>
                               )}
-
                             </div>
 
 
-                            {voiceResponse && (
-
-                              <div className="flex gap-2">
-
-                                <motion.button
-                                  type="button"
-                                  onClick={
-                                    toggleAudioPlayback
-                                  }
-                                  whileHover={{
-                                    scale: 1.06,
-                                  }}
-                                  whileTap={{
-                                    scale: 0.94,
-                                  }}
-                                  disabled={
-                                    generatingAudio
-                                  }
-                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-                                  aria-label={
-                                    isPlaying
-                                      ? "Pause response"
-                                      : "Play response"
-                                  }
-                                >
-                                  {isPlaying ? (
-                                    <Pause className="h-4 w-4" />
-                                  ) : (
-                                    <Play className="h-4 w-4" />
-                                  )}
-                                </motion.button>
-
-
-                                <motion.button
-                                  type="button"
-                                  onClick={
-                                    replayAudio
-                                  }
-                                  whileHover={{
-                                    scale: 1.06,
-                                  }}
-                                  whileTap={{
-                                    scale: 0.94,
-                                  }}
-                                  disabled={
-                                    generatingAudio ||
-                                    !audioAvailable
-                                  }
-                                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-                                  aria-label="Replay response"
-                                >
-                                  <RotateCcw className="h-4 w-4" />
-                                </motion.button>
-
-                              </div>
-
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                speakResponse(
+                                  voiceResponse
+                                )
+                              }
+                              disabled={
+                                !voiceResponse
+                              }
+                              className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/65 transition hover:bg-white/10 hover:text-white disabled:opacity-30"
+                              aria-label="Read response aloud"
+                            >
+                              <Volume2 className="h-4 w-4" />
+                            </button>
 
                           </div>
 
 
-                          <p className="mt-4 text-lg leading-8 text-white/85">
+                          <p className="mt-4 whitespace-pre-wrap text-lg leading-8 text-white/85">
                             {voiceResponse}
                           </p>
 
                         </div>
 
                       </motion.div>
-
                     )}
+
+
+                    <div className="mt-8 w-full max-w-4xl rounded-[26px] border border-white/10 bg-white/[0.025] p-5 backdrop-blur-xl">
+
+                      <div className="grid gap-5 md:grid-cols-2">
+
+                        <div>
+                          <label className="text-xs uppercase tracking-[0.18em] text-white/35">
+                            Voice
+                          </label>
+
+                          <select
+                            value={
+                              selectedVoiceName
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setSelectedVoiceName(
+                                event.target.value
+                              );
+                            }}
+                            className="mt-2 w-full rounded-xl border border-white/10 bg-[#101214] px-3 py-3 text-sm text-white outline-none"
+                          >
+                            {availableVoices.map(
+                              (
+                                voice
+                              ) => (
+                                <option
+                                  key={`${voice.name}-${voice.lang}`}
+                                  value={
+                                    voice.name
+                                  }
+                                >
+                                  {voice.name}{" "}
+                                  ({voice.lang})
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </div>
+
+
+                        <div>
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs uppercase tracking-[0.18em] text-white/35">
+                              Speech speed
+                            </label>
+
+                            <span className="text-sm text-white/50">
+                              {speechRate.toFixed(
+                                1
+                              )}
+                              x
+                            </span>
+                          </div>
+
+                          <input
+                            type="range"
+                            min="0.6"
+                            max="1.6"
+                            step="0.1"
+                            value={
+                              speechRate
+                            }
+                            onChange={(
+                              event
+                            ) => {
+                              setSpeechRate(
+                                Number(
+                                  event.target.value
+                                )
+                              );
+                            }}
+                            className="mt-4 w-full"
+                          />
+                        </div>
+
+                      </div>
+
+                    </div>
 
                   </div>
 
@@ -1239,35 +2549,50 @@ export default function AppPage() {
 
               ) : (
 
+                /* CHAT MODE */
+
                 <motion.section
                   initial={{
-                    opacity: 0,
-                    y: 25,
+                    opacity:
+                      0,
+
+                    y:
+                      25,
                   }}
                   animate={{
-                    opacity: 1,
-                    y: 0,
+                    opacity:
+                      1,
+
+                    y:
+                      0,
                   }}
-                  className="mt-12 overflow-hidden rounded-[34px] border border-white/10 bg-white/[0.035] shadow-2xl backdrop-blur-2xl"
+                  className="mt-10 overflow-hidden rounded-[34px] border border-white/10 bg-white/[0.035] shadow-2xl backdrop-blur-2xl"
                 >
 
-                  <div className="min-h-[420px] max-h-[58vh] overflow-y-auto px-6 py-7 md:px-8">
+                  <div
+                    ref={
+                      chatScrollRef
+                    }
+                    className="min-h-[430px] max-h-[58vh] overflow-y-auto px-6 py-7 md:px-8"
+                  >
 
                     {messages.length ===
                     0 ? (
 
-                      <div className="flex min-h-[360px] items-center justify-center">
+                      <div className="flex min-h-[370px] items-center justify-center">
 
                         <div className="max-w-xl text-center">
 
-                          <BrainCircuit className="mx-auto h-8 w-8 text-white/60" />
+                          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05]">
+                            <BrainCircuit className="h-6 w-6 text-white/65" />
+                          </div>
 
                           <h3 className="mt-5 text-2xl font-semibold">
                             Ask Lumina anything.
                           </h3>
 
                           <p className="mt-3 leading-7 text-white/45">
-                            Your conversation context and memory remain available as you continue.
+                            Start a conversation or reopen one from your history.
                           </p>
 
                         </div>
@@ -1284,8 +2609,22 @@ export default function AppPage() {
                             index
                           ) => (
 
-                            <div
+                            <motion.div
                               key={`${chatMessage.role}-${index}`}
+                              initial={{
+                                opacity:
+                                  0,
+
+                                y:
+                                  10,
+                              }}
+                              animate={{
+                                opacity:
+                                  1,
+
+                                y:
+                                  0,
+                              }}
                               className={
                                 chatMessage.role ===
                                 "user"
@@ -1303,21 +2642,41 @@ export default function AppPage() {
                                 }
                               >
 
-                                <p className="whitespace-pre-wrap leading-7">
-                                  {
-                                    chatMessage.content
-                                  }
-                                </p>
+                                <div className="flex items-start gap-3">
+
+                                  <p className="flex-1 whitespace-pre-wrap leading-7">
+                                    {chatMessage.content}
+                                  </p>
+
+
+                                  {chatMessage.role ===
+                                    "assistant" && (
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        speakResponse(
+                                          chatMessage.content
+                                        )
+                                      }
+                                      className="mt-1 shrink-0 text-white/35 transition hover:text-white"
+                                      aria-label="Read aloud"
+                                    >
+                                      <Volume2 className="h-4 w-4" />
+                                    </button>
+
+                                  )}
+
+                                </div>
 
                               </div>
 
-                            </div>
-
+                            </motion.div>
                           )
                         )}
 
-                        {sending && (
 
+                        {sending && (
                           <div className="flex justify-start">
 
                             <div className="flex items-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.045] px-5 py-4">
@@ -1331,17 +2690,15 @@ export default function AppPage() {
                             </div>
 
                           </div>
-
                         )}
 
                       </div>
-
                     )}
 
                   </div>
 
 
-                  <div className="border-t border-white/8 p-5">
+                  <div className="border-t border-white/10 p-5">
 
                     {error && (
                       <div className="mb-4 rounded-2xl border border-red-400/15 bg-red-400/10 px-4 py-3 text-sm text-red-200">
@@ -1358,32 +2715,56 @@ export default function AppPage() {
                     >
 
                       <textarea
-                        value={message}
+                        value={
+                          message
+                        }
                         onChange={(
                           event
                         ) =>
                           setMessage(
-                            event.target
-                              .value
+                            event.target.value
                           )
                         }
+                        onKeyDown={(
+                          event
+                        ) => {
+                          if (
+                            event.key ===
+                              "Enter" &&
+                            !event.shiftKey
+                          ) {
+                            event.preventDefault();
+
+                            if (
+                              message.trim() &&
+                              !sending
+                            ) {
+                              void sendMessage();
+                            }
+                          }
+                        }}
                         placeholder="Ask Lumina anything..."
                         rows={3}
-                        maxLength={10000}
-                        disabled={sending}
-                        className="w-full resize-none bg-transparent text-lg outline-none placeholder:text-white/25 disabled:opacity-60"
+                        maxLength={
+                          10000
+                        }
+                        disabled={
+                          sending
+                        }
+                        className="w-full resize-none bg-transparent text-lg text-white outline-none placeholder:text-white/25 disabled:opacity-60"
                       />
 
 
-                      <div className="mt-4 flex items-center justify-between">
+                      <div className="mt-4 flex items-center justify-between gap-4">
 
                         <button
                           type="button"
-                          onClick={() =>
-                            setMode(
-                              "voice"
-                            )
-                          }
+                          onClick={() => {
+                            stopSpeech();
+                            stopActiveMicrophone();
+                            setRecording(false);
+                            setMode("voice");
+                          }}
                           className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/55 transition hover:bg-white/[0.08] hover:text-white"
                           aria-label="Switch to voice"
                         >
@@ -1409,7 +2790,7 @@ export default function AppPage() {
                             !message.trim()
                           }
                           type="submit"
-                          className="flex items-center gap-2 rounded-2xl bg-white px-5 py-3 font-medium text-black disabled:opacity-40"
+                          className="flex items-center gap-2 rounded-2xl bg-white px-5 py-3 font-medium text-black disabled:cursor-not-allowed disabled:opacity-40"
                         >
 
                           {sending
