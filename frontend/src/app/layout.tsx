@@ -3,6 +3,9 @@ import "./globals.css";
 
 
 export const metadata: Metadata = {
+  verification: {
+  google: "R6h73_HKM-cQSPtSSh_qeS6_blyT_MZAilRSqrtTg-w",
+  },
   metadataBase: new URL(
     "https://lumina-ai-rust-mu.vercel.app"
   ),
