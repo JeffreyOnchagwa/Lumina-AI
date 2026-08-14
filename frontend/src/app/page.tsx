@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   motion,
   useMotionValue,
@@ -491,6 +492,7 @@ const scenes: Array<{
 
 
 export default function Home() {
+  const router = useRouter();
   const heroRef = useRef<HTMLElement | null>(null);
 
   const heroPointerX = useMotionValue(0);
@@ -630,6 +632,10 @@ export default function Home() {
         </div>
 
         <motion.button
+          type="button"
+          onClick={() => {
+            router.push("/login");
+          }}
           whileHover={{
             scale: 1.05,
             y: -1,
@@ -880,6 +886,10 @@ export default function Home() {
           </p>
 
           <motion.button
+            type="button"
+            onClick={() => {
+              router.push("/login");
+            }}
             whileHover={{
               scale: 1.05,
               y: -5,
