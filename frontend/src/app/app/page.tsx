@@ -10,7 +10,7 @@ import {
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import MobileNav from "@/components/mobile-nav";
-
+import { API_URL } from "@/lib/api";
 import {
   BrainCircuit,
   FileText,
@@ -423,7 +423,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          "http://127.0.0.1:8000/preferences/",
+          `${API_URL}/preferences/`,
           {
             headers: {
               Authorization:
@@ -500,7 +500,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          "http://127.0.0.1:8000/conversations/",
+          `${API_URL}/conversations/`,
           {
             headers: {
               Authorization:
@@ -597,7 +597,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          `http://127.0.0.1:8000/conversations/${id}/messages`,
+          `${API_URL}/conversations/${id}/messages`,
           {
             headers: {
               Authorization:
@@ -724,7 +724,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          `http://127.0.0.1:8000/conversations/${conversation.id}`,
+          `${API_URL}/conversations/${conversation.id}`,
           {
             method:
               "PATCH",
@@ -800,7 +800,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          `http://127.0.0.1:8000/conversations/${conversation.id}`,
+          `${API_URL}/conversations/${conversation.id}`,
           {
             method:
               "DELETE",
@@ -1387,7 +1387,7 @@ export default function AppPage() {
 
       const response =
         await fetch(
-          "http://127.0.0.1:8000/voice/chat",
+          `${API_URL}/voice/chat`,
           {
             method:
               "POST",
@@ -1572,7 +1572,7 @@ export default function AppPage() {
     try {
       const response =
         await fetch(
-          "http://127.0.0.1:8000/chat/",
+          `${API_URL}/chat/`,
           {
             method:
               "POST",
