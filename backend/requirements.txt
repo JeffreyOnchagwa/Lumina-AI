@@ -13,3 +13,5 @@ python-jose==3.5.0
 python-multipart==0.0.32
 SQLAlchemy==2.0.51
 uvicorn==0.52.0
+pwdlib==0.3.0
+argon2-cffi==25.1.0
