@@ -842,6 +842,131 @@ export default function Home() {
         ))}
       </div>
 
+      {/* SEO / ABOUT SECTION */}
+      <section className="relative overflow-hidden border-y border-white/10 bg-[#07090a] px-6 py-28 md:px-10 md:py-36">
+        <div className="pointer-events-none absolute left-1/2 top-1/2 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/[0.025] blur-[180px]" />
+
+        <div className="relative z-10 mx-auto max-w-6xl">
+
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 40,
+            }}
+            whileInView={{
+              opacity: 1,
+              y: 0,
+            }}
+            viewport={{
+              once: true,
+              amount: 0.25,
+            }}
+            transition={{
+              duration: 0.9,
+              ease: [0.22, 1, 0.36, 1],
+            }}
+          >
+            <p className="text-sm uppercase tracking-[0.26em] text-white/40">
+              What is Lumina AI?
+            </p>
+
+            <h2 className="mt-6 max-w-4xl text-4xl font-semibold leading-tight tracking-[-0.05em] text-white md:text-6xl">
+              An AI assistant built for conversation, learning, documents and accessibility.
+            </h2>
+
+            <p className="mt-7 max-w-3xl text-lg leading-8 text-white/60">
+              Lumina AI is an intelligent web-based AI assistant that combines
+              natural conversation, voice interaction, document analysis,
+              image text extraction and personalized memory in one connected
+              workspace.
+            </p>
+          </motion.div>
+
+          <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <Mic2 className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                Voice AI conversations
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Speak naturally with Lumina AI, convert speech into text and
+                receive intelligent conversational responses.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <FileText className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                AI document analysis
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Upload PDFs, summarize documents, simplify difficult material
+                and ask questions based on the information inside your files.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <ScanText className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                Image text extraction
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Extract readable text from screenshots, scanned notes and
+                photographed pages, then explore that information with AI.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <BrainCircuit className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                Personalized AI memory
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Lumina can preserve useful preferences and context so future
+                conversations can feel more relevant and personalized.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <Sparkles className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                AI learning assistant
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Use Lumina AI to understand difficult ideas, simplify study
+                material and interact with information in clearer ways.
+              </p>
+            </div>
+
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 backdrop-blur-xl">
+              <Waves className="h-5 w-5 text-white/70" />
+
+              <h3 className="mt-5 text-lg font-semibold">
+                Accessible interaction
+              </h3>
+
+              <p className="mt-3 leading-7 text-white/45">
+                Voice input, read-aloud support and adaptable preferences make
+                Lumina easier to use across different interaction styles.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+      </section>
+
       {/* FINAL CTA */}
       <section
         id="final"
