@@ -4,8 +4,9 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   verification: {
-  google: "R6h73_HKM-cQSPtSSh_qeS6_blyT_MZAilRSqrtTg-w",
+    google: "R6h73_HKM-cQSPtSSh_qeS6_blyT_MZAilRSqrtTg-w",
   },
+
   metadataBase: new URL(
     "https://lumina-ai-rust-mu.vercel.app"
   ),
@@ -107,17 +108,64 @@ export const metadata: Metadata = {
 };
 
 
+const structuredData = {
+  "@context": "https://schema.org",
+
+  "@type": "SoftwareApplication",
+
+  name: "Lumina AI",
+
+  url: "https://lumina-ai-rust-mu.vercel.app/",
+
+  applicationCategory: "WebApplication",
+
+  operatingSystem: "Web",
+
+  description:
+    "Lumina AI is an intelligent AI assistant for voice conversations, document analysis, image text extraction, learning, accessibility, and personalized conversations.",
+
+  featureList: [
+    "AI conversations",
+    "Voice conversations",
+    "Document analysis",
+    "PDF summarization",
+    "Document simplification",
+    "Document question answering",
+    "Image text extraction",
+    "Text to speech",
+    "Personalized AI memory",
+    "Learning assistance",
+  ],
+
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+};
+
+
 export default function RootLayout({
   children,
 }: Readonly<{
-  children:
-    React.ReactNode;
+  children: React.ReactNode;
 }>) {
   return (
     <html lang="en">
+
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData),
+          }}
+        />
+      </head>
+
       <body>
         {children}
       </body>
+
     </html>
   );
 }
